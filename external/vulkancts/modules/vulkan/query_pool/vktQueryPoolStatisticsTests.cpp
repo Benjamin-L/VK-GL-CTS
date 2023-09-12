@@ -647,6 +647,25 @@ tcu::TestStatus ComputeInvocationsTestInstance::executeTest (const VkCommandPool
 		const Unique<VkQueryPool>		queryPool			(makeQueryPool(vk, device, 1u, VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT));
 
 		beginCommandBuffer(vk, *cmdBuffer);
+			// Create indirect buffer
+			VkDispatchIndirectCommand indirectBufferData = {
+				.x = m_parameters[parametersNdx].groupSize.x(),
+				.y = m_parameters[parametersNdx].groupSize.y(),
+				.z = m_parameters[parametersNdx].groupSize.z()
+			};
+
+			vk::BufferWithMemory indirectBuffer(
+				vk, device, m_context.getDefaultAllocator(),
+				vk::makeBufferCreateInfo(sizeof(indirectBufferData), vk::VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT),
+				vk::MemoryRequirement::HostVisible);
+
+			auto& indirectBufferAlloc = indirectBuffer.getAllocation();
+
+			// Fill indirect buffer contents
+			VK_CHECK(vk.bindBufferMemory(device, *indirectBuffer, indirectBufferAlloc.getMemory(), indirectBufferAlloc.getOffset()));
+			deMemcpy(indirectBufferAlloc.getHostPtr(), &indirectBufferData, sizeof(indirectBufferData));
+			flushAlloc(vk, device, indirectBufferAlloc);
+
 			if (m_parameters[0].resetType != RESET_TYPE_HOST)
 				vk.cmdResetQueryPool(*cmdBuffer, *queryPool, 0u, 1u);
 
@@ -654,7 +673,8 @@ tcu::TestStatus ComputeInvocationsTestInstance::executeTest (const VkCommandPool
 			vk.cmdBindDescriptorSets(*cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0u, 1u, &descriptorSet, 0u, DE_NULL);
 
 			vk.cmdBeginQuery(*cmdBuffer, *queryPool, 0u, (VkQueryControlFlags)0u);
-			vk.cmdDispatch(*cmdBuffer, m_parameters[parametersNdx].groupSize.x(), m_parameters[parametersNdx].groupSize.y(), m_parameters[parametersNdx].groupSize.z());
+			// vk.cmdDispatch(*cmdBuffer, m_parameters[parametersNdx].groupSize.x(), m_parameters[parametersNdx].groupSize.y(), m_parameters[parametersNdx].groupSize.z());
+			vk.cmdDispatchIndirect(*cmdBuffer, indirectBuffer.get(), 0);
 			vk.cmdEndQuery(*cmdBuffer, *queryPool, 0u);
 
 			if (m_parameters[0].resetType == RESET_TYPE_BEFORE_COPY || m_parameters[0].resetType == RESET_TYPE_AFTER_COPY || m_parameters[0].copyType == COPY_TYPE_CMD)
